@@ -97,7 +97,9 @@ func forceEOF(yylex interface{}) {
   LengthScaleOption LengthScaleOption
   columnDefinition *ColumnDefinition
   indexDefinition *IndexDefinition
+  constraintDefinition *ConstraintDefinition
   indexInfo     *IndexInfo
+  constraintInfo ConstraintInfo
   indexColumn   *IndexColumn
   indexColumns  []*IndexColumn
   partDefs      []*PartitionDefinition
@@ -145,8 +147,8 @@ func forceEOF(yylex interface{}) {
 %token <empty> JSON_EXTRACT_OP JSON_UNQUOTE_EXTRACT_OP
 
 // DDL Tokens
-%token <bytes> CREATE ALTER DROP RENAME ANALYZE
-%token <bytes> TABLE INDEX VIEW TO IGNORE IF UNIQUE PRIMARY
+%token <bytes> CREATE ALTER DROP RENAME ANALYZE ADD
+%token <bytes> SCHEMA TABLE INDEX VIEW TO IGNORE IF UNIQUE PRIMARY COLUMN CONSTRAINT SPATIAL FULLTEXT FOREIGN REFERENCES KEY_BLOCK_SIZE
 %token <bytes> SHOW DESCRIBE EXPLAIN DATE ESCAPE REPAIR OPTIMIZE TRUNCATE
 %token <bytes> MAXVALUE PARTITION REORGANIZE LESS THAN
 
@@ -256,12 +258,14 @@ func forceEOF(yylex interface{}) {
 %type <strs> enum_values
 %type <columnDefinition> column_definition
 %type <indexDefinition> index_definition
+%type <constraintDefinition> constraint_definition
 %type <str> index_or_key
 %type <TableSpec> table_spec table_column_list
 %type <str> table_option_list table_option table_opt_value
 %type <indexInfo> index_info
 %type <indexColumn> index_column
 %type <indexColumns> index_column_list
+%type <constraintInfo> constraint_info
 %type <partDefs> partition_definitions
 %type <partDef> partition_definition
 %type <partSpec> partition_operation
@@ -485,6 +489,10 @@ table_column_list:
 | table_column_list ',' index_definition
   {
     $$.AddIndex($3)
+  }
+| table_column_list ',' constraint_definition
+  {
+    $$.AddConstraint($3)
   }
 
 column_definition:
@@ -886,6 +894,22 @@ index_column:
   sql_id length_opt
   {
       $$ = &IndexColumn{Column: $1, Length: $2}
+  }
+
+constraint_definition:
+  CONSTRAINT ID constraint_info
+  {
+    $$ = &ConstraintDefinition{Name: string($2), Details: $3}
+  }
+|  constraint_info
+  {
+    $$ = &ConstraintDefinition{Details: $1}
+  }
+
+constraint_info:
+  FOREIGN KEY '(' using_column_list ')' REFERENCES table_name '(' using_column_list ')'
+  {
+    $$ = &ForeignKeyDefinition{Source: $4, ReferencedTable: $7, ReferencedColumns: $9}
   }
 
 table_option_list:
@@ -2538,6 +2562,7 @@ non_reserved_keyword:
 | PRIMARY
 | QUERY
 | REAL
+| REFERENCES
 | REORGANIZE
 | REPAIR
 | SHARE
